@@ -1,0 +1,1646 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Digital Wellbeing Monitor</title>
+  <style>
+    /* ------------------------------------------------------------------
+       Design tokens. One brand family (teal) carries the app's structure
+       (header, nav, primary actions); one warm accent (coral) is spent in
+       a single place -- the header band and the primary "Start camera"
+       action -- rather than scattered everywhere. The red/amber/green used
+       for fatigue, posture, attention and DHRI STATES below are untouched:
+       they already carry real meaning (good/warning/bad) and must stay
+       visually distinct from this decorative palette, not blended into it.
+       ------------------------------------------------------------------ */
+    :root {
+      --teal-900: #0b4a56;
+      --teal-700: #0f6674;
+      --teal-600: #13808f;
+      --teal-100: #e3f2f1;
+      --teal-050: #f1f8f8;
+      --coral-600: #e8623a;
+      --coral-500: #f2733f;
+      --coral-100: #fde7dd;
+      --bg: #f3f6f7;
+      --card: #ffffff;
+      --border: #e1e8ea;
+      --text: #16232b;
+      --muted: #5b6b72;
+    }
+
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, "Segoe UI", system-ui, sans-serif; max-width: 1000px; margin: 0 auto 60px; padding: 0 16px; color: var(--text); background: var(--bg); }
+    h1 { font-size: 1.5rem; font-weight: 700; letter-spacing: -0.01em; margin: 0 0 4px; color: #ffffff; }
+    .sub { color: #d7ecea; margin: 0; font-size: 0.92rem; max-width: 62ch; }
+    .card { background: var(--card); border: 1px solid var(--border); border-left: 4px solid var(--teal-600); border-radius: 10px; padding: 20px 22px; margin-top: 20px; box-shadow: 0 1px 2px rgba(16, 24, 32, 0.04); }
+    h2 { display: flex; align-items: center; gap: 9px; font-size: 1.1rem; font-weight: 700; color: var(--text); }
+    label { display: block; margin-top: 12px; font-size: 0.9rem; color: var(--muted); font-weight: 600; }
+    input { width: 100%; box-sizing: border-box; padding: 9px 11px; margin-top: 4px; border: 1px solid #ccd6d9; border-radius: 7px; font-size: 1rem; font-family: inherit; }
+    input:focus-visible, button:focus-visible, a:focus-visible { outline: 2px solid var(--teal-600); outline-offset: 2px; }
+    button { margin-top: 16px; padding: 9px 18px; border: 0; border-radius: 7px; background: var(--teal-700); color: white; font-size: 0.95rem; font-weight: 600; cursor: pointer; transition: background-color 0.15s ease, transform 0.05s ease; }
+    button:hover:not(:disabled) { background: var(--teal-900); }
+    button:active:not(:disabled) { transform: translateY(1px); }
+    button.link { background: none; color: var(--teal-700); padding: 0; margin: 0 0 0 6px; text-decoration: underline; font-weight: 600; }
+    button.link:hover:not(:disabled) { background: none; color: var(--teal-900); }
+    button.secondary { background: #eef1f2; color: var(--text); border: 1px solid var(--border); }
+    button.secondary:hover:not(:disabled) { background: #e3e8ea; }
+    #start-btn { background: var(--coral-500); }
+    #start-btn:hover:not(:disabled) { background: var(--coral-600); }
+    .error { color: #b91c1c; margin-top: 10px; min-height: 1.2em; }
+    /* !important is deliberate here: .hidden is a utility class that must always win over a
+       component's own "display: flex/grid" rule (e.g. .topbar-right, .nav), regardless of
+       which rule happens to come later in the stylesheet. */
+    .hidden { display: none !important; }
+    .row { display: flex; gap: 10px; padding: 7px 0; border-bottom: 1px solid #f0f3f4; }
+    .ok { color: #15803d; font-weight: 600; width: 50px; }
+    .fail { color: #b91c1c; font-weight: 600; width: 50px; }
+    .name { width: 290px; color: var(--muted); }
+    .detail { color: var(--text); font-weight: 500; }
+    .note { background: var(--teal-050); border: 1px solid var(--teal-100); color: #13505a; padding: 12px 16px; border-radius: 8px; margin-top: 20px; font-size: 0.9rem; }
+    details { margin-top: 20px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 4px 16px; }
+    summary { cursor: pointer; padding: 10px 0; font-weight: 600; color: var(--muted); }
+    .indicator { display: inline-block; padding: 6px 12px; border-radius: 999px; font-weight: 700; font-size: 0.85rem; }
+    .indicator.off { background: #e5e7eb; color: #374151; }
+    .indicator.on { background: #fee2e2; color: #b91c1c; }
+    .indicator.other { background: #fef3c7; color: #92400e; }
+    .privacy { font-size: 0.85rem; color: var(--muted); margin: 8px 0 12px; }
+    .preview-box { background: #0f1b22; border-radius: 10px; min-height: 120px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+    .preview-box img { max-width: 100%; display: block; transform: scaleX(-1); } /* mirror view, like a mirror */
+    .preview-box .placeholder { color: #8aa0a6; padding: 40px 10px; text-align: center; }
+    .warning { color: #b45309; margin-top: 8px; min-height: 1.2em; }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    .cal-panel { background: var(--teal-050); border: 1px solid var(--teal-100); border-radius: 8px; padding: 14px 16px; margin: 12px 0; }
+    .cal-message { font-size: 1.15rem; font-weight: 600; color: var(--teal-900); }
+    .cal-countdown { font-size: 2rem; font-weight: 700; color: var(--teal-700); margin: 6px 0; }
+    .bar { background: var(--teal-100); border-radius: 999px; height: 8px; overflow: hidden; }
+    .bar > div { background: var(--teal-600); height: 8px; width: 0%; transition: width 0.25s linear; }
+    .success { color: #15803d; margin-top: 10px; min-height: 1.2em; }
+    .badge { display: inline-block; padding: 4px 10px; border-radius: 6px; font-weight: 700; font-size: 0.85rem; }
+    .badge.rules { background: #fef3c7; color: #92400e; }
+    .badge.ml { background: #dbeafe; color: #1e40af; }
+    .f-state { font-size: 1.7rem; font-weight: 800; margin: 12px 0 4px; }
+    .f-normal { color: #15803d; } .f-warning { color: #b45309; } .f-fatigued { color: #b91c1c; } .f-unavailable { color: #6b7280; font-size: 1.2rem; }
+    #f-reasons { margin: 4px 0 8px 18px; padding: 0; color: #374151; font-size: 0.92rem; }
+    .small { font-size: 0.85rem; color: var(--muted); }
+    .p-state { font-size: 1.7rem; font-weight: 800; margin: 12px 0 4px; }
+    .p-good { color: #15803d; } .p-warning { color: #b45309; } .p-poor { color: #b91c1c; } .p-unavailable { color: #6b7280; font-size: 1.2rem; }
+    #p-reasons { margin: 4px 0 8px 18px; padding: 0; color: #374151; font-size: 0.92rem; }
+    .a-state { font-size: 1.7rem; font-weight: 800; margin: 12px 0 4px; }
+    .a-attentive { color: #15803d; } .a-distracted { color: #b45309; } .a-no_face { color: #b91c1c; } .a-unavailable { color: #6b7280; font-size: 1.2rem; }
+    #a-reasons { margin: 4px 0 8px 18px; padding: 0; color: #374151; font-size: 0.92rem; }
+    .dhri-level { font-size: 2rem; font-weight: 800; margin: 10px 0 2px; }
+    .dhri-low { color: #15803d; } .dhri-moderate { color: #b45309; } .dhri-high { color: #b91c1c; } .dhri-unavailable { color: #6b7280; font-size: 1.2rem; }
+    .dhri-score { font-size: 1.1rem; color: #374151; margin-bottom: 8px; }
+    .dhri-bar-row { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 0.88rem; }
+    .dhri-bar-label { width: 130px; color: var(--muted); }
+    .dhri-bar-track { flex: 1; background: #e5e7eb; border-radius: 999px; height: 10px; overflow: hidden; }
+    .dhri-bar-fill { display: inline-block; height: 10px; border-radius: 999px; } /* it's a <span>: needs display:inline-block or its inline-set width is ignored */
+    .dhri-bar-value { width: 60px; text-align: right; color: #374151; }
+    .al-recommendation { background: var(--teal-050); border-left: 3px solid var(--teal-600); padding: 8px 12px; margin: 6px 0; border-radius: 4px; font-size: 0.92rem; color: var(--teal-900); }
+    .al-alert-item { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #f3f4f6; font-size: 0.9rem; color: #374151; }
+    .al-alert-time { color: #9ca3af; font-size: 0.82rem; }
+    .trend-chart { margin-bottom: 16px; }
+    .trend-title { font-size: 0.85rem; color: var(--muted); margin-bottom: 4px; font-weight: 600; }
+    .trend-svg { width: 100%; height: 70px; display: block; background: var(--teal-050); border-radius: 6px; }
+    .history-table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 0.85rem; }
+    .history-table th, .history-table td { text-align: left; padding: 7px 8px; border-bottom: 1px solid #f0f3f4; }
+    .history-table th { color: var(--muted); font-weight: 700; font-size: 0.78rem; }
+    .history-table tbody tr:hover { background: var(--teal-050); }
+
+    /* Navigation shell (feature nav + dashboard) */
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin: 0 -16px; padding: 22px 16px; background: linear-gradient(120deg, var(--teal-900), var(--teal-700) 70%, var(--coral-600)); }
+    .topbar-right { display: flex; align-items: center; gap: 10px; }
+    .topbar-user { display: flex; align-items: center; gap: 8px; font-size: 0.9rem; color: #eaf6f5; font-weight: 600; background: rgba(255, 255, 255, 0.12); padding: 5px 12px 5px 5px; border-radius: 999px; }
+    .avatar { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 999px; background: var(--coral-500); color: white; font-size: 0.78rem; font-weight: 700; }
+    .dhri-mini { display: inline-flex; align-items: center; gap: 6px; padding: 6px 13px; border-radius: 999px; font-weight: 700; font-size: 0.85rem; background: rgba(255, 255, 255, 0.9); color: var(--muted); }
+    .dhri-mini.dhri-mini-low { background: #dcfce7; color: #15803d; }
+    .dhri-mini.dhri-mini-moderate { background: #fef3c7; color: #92400e; }
+    .dhri-mini.dhri-mini-high { background: #fee2e2; color: #b91c1c; }
+    .nav { display: flex; flex-wrap: wrap; gap: 6px; margin: 18px 0 0; padding: 10px; background: var(--card); border: 1px solid var(--border); border-radius: 12px; list-style: none; box-shadow: 0 1px 2px rgba(16, 24, 32, 0.04); }
+    .nav button { margin-top: 0; background: none; color: var(--muted); padding: 9px 15px; font-size: 0.88rem; font-weight: 600; border-radius: 8px; display: inline-flex; align-items: center; }
+    .nav button:hover:not(.active) { background: var(--teal-050); color: var(--teal-900); }
+    .nav button.active { background: var(--teal-700); color: white; }
+    .page.hidden { display: none; }
+    .dash-summary { display: flex; align-items: center; gap: 10px; background: var(--teal-050); border: 1px solid var(--teal-100); border-radius: 8px; padding: 12px 16px; margin-bottom: 18px; font-size: 0.92rem; font-weight: 600; color: var(--teal-900); }
+    .icon { width: 17px; height: 17px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .icon-lg { width: 20px; height: 20px; flex: none; stroke: var(--teal-700); fill: none; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+
+    /* ------------------------------------------------------------------
+       Home hub: one colourful tile per feature page. A tile is nothing
+       more than a nav button wearing a bigger coat -- clicking it calls
+       the same switchPage() as every nav-bar button and breadcrumb link,
+       via one shared document-level click listener on [data-page].
+       Colours here are purely for wayfinding/visual interest and are a
+       separate palette from the red/amber/green STATE colours used inside
+       the feature pages, so the two are never confused.
+       ------------------------------------------------------------------ */
+    .home-hero { background: linear-gradient(135deg, var(--teal-050), #ffffff 65%); border: 1px solid var(--teal-100); border-radius: 14px; padding: 24px 26px; margin-top: 20px; }
+    .home-hero h2 { display: block; margin: 0 0 6px; font-size: 1.35rem; } /* override the global h2{display:flex;gap:9px} icon-heading rule, which would otherwise show as a gap before the username */
+    .home-hero p { margin: 0; color: var(--muted); max-width: 60ch; }
+    .tile-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; margin-top: 18px; }
+    .tile {
+      all: unset; box-sizing: border-box; cursor: pointer;
+      display: flex; flex-direction: column; align-items: flex-start; gap: 10px;
+      background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+      padding: 18px 18px 16px; box-shadow: 0 1px 2px rgba(16, 24, 32, 0.04);
+      transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+      position: relative; overflow: hidden;
+    }
+    .tile::before { content: ""; position: absolute; inset: 0; background: var(--tile-bg); opacity: 0; transition: opacity 0.15s ease; }
+    .tile:hover, .tile:focus-visible { transform: translateY(-3px); box-shadow: 0 10px 22px -10px rgba(16, 24, 32, 0.25); border-color: var(--tile-accent); }
+    .tile:hover::before, .tile:focus-visible::before { opacity: 1; }
+    .tile:focus-visible { outline: 2px solid var(--tile-accent); outline-offset: 2px; }
+    .tile:active { transform: translateY(-1px); }
+    .tile > * { position: relative; z-index: 1; }
+    .tile-icon { width: 42px; height: 42px; border-radius: 11px; display: flex; align-items: center; justify-content: center; background: var(--tile-bg); }
+    .tile-icon svg { width: 22px; height: 22px; stroke: var(--tile-accent); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .tile-title { font-weight: 700; font-size: 1rem; color: var(--text); }
+    .tile-desc { font-size: 0.82rem; color: var(--muted); line-height: 1.35; }
+    .tile-teal   { --tile-accent: var(--teal-700); --tile-bg: var(--teal-100); }
+    .tile-indigo { --tile-accent: #4338ca; --tile-bg: #eef2ff; }
+    .tile-violet { --tile-accent: #7c3aed; --tile-bg: #f5f3ff; }
+    .tile-cyan   { --tile-accent: #0e7490; --tile-bg: #ecfeff; }
+    .tile-coral  { --tile-accent: var(--coral-600); --tile-bg: var(--coral-100); }
+    .tile-rose   { --tile-accent: #be123c; --tile-bg: #fff1f2; }
+    .tile-sky    { --tile-accent: #0369a1; --tile-bg: #f0f9ff; }
+    .tile-slate  { --tile-accent: #475569; --tile-bg: #f1f5f9; }
+    .tile-blue   { --tile-accent: #1d4ed8; --tile-bg: #eff6ff; }
+    .tile-stone  { --tile-accent: #78716c; --tile-bg: #fafaf9; }
+
+    /* Breadcrumb / "back to Home" bar shown above every feature page (hidden on Home itself) */
+    .breadcrumb { display: flex; align-items: center; gap: 10px; margin-top: 18px; font-size: 0.9rem; color: var(--muted); }
+    .breadcrumb button.back-home { all: unset; box-sizing: border-box; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; color: var(--teal-700); font-weight: 700; padding: 4px 2px; border-radius: 4px; }
+    .breadcrumb button.back-home:hover { color: var(--teal-900); text-decoration: underline; }
+    .breadcrumb button.back-home:focus-visible { outline: 2px solid var(--teal-600); outline-offset: 2px; }
+    .breadcrumb .crumb-sep { color: #c7d0d3; }
+    .breadcrumb .crumb-current { font-weight: 700; color: var(--text); }
+
+    /* Page-switch animation: a quick fade + rise each time a page becomes active. Skipped
+       entirely for anyone whose OS asks for reduced motion. */
+    @media (prefers-reduced-motion: no-preference) {
+      .page-anim { animation: pageIn 0.28s ease both; }
+    }
+    @keyframes pageIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+  </style>
+</head>
+<body>
+  <!-- Icon sprite: one set of simple line icons, reused (via <use>) in the nav bar and in each
+       page's heading so the two stay visually linked -- this is wayfinding, not decoration. -->
+  <svg style="display:none" aria-hidden="true">
+    <defs>
+      <symbol id="icon-camera" viewBox="0 0 24 24">
+        <rect x="3" y="7" width="14" height="10" rx="2"></rect>
+        <polygon points="17,10 21,8 21,16 17,14"></polygon>
+        <circle cx="9" cy="12" r="2.3"></circle>
+      </symbol>
+      <symbol id="icon-eye" viewBox="0 0 24 24">
+        <path d="M2 12c2.5-4.5 6.2-7 10-7s7.5 2.5 10 7c-2.5 4.5-6.2 7-10 7s-7.5-2.5-10-7z"></path>
+        <circle cx="12" cy="12" r="2.6"></circle>
+      </symbol>
+      <symbol id="icon-posture" viewBox="0 0 24 24">
+        <circle cx="12" cy="5" r="2.3"></circle>
+        <line x1="12" y1="7.5" x2="12" y2="16"></line>
+        <line x1="7" y1="10" x2="17" y2="10"></line>
+        <line x1="12" y1="16" x2="8.5" y2="21"></line>
+        <line x1="12" y1="16" x2="15.5" y2="21"></line>
+      </symbol>
+      <symbol id="icon-target" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="8.5"></circle>
+        <circle cx="12" cy="12" r="4.3"></circle>
+        <circle cx="12" cy="12" r="0.9" fill="currentColor" stroke="none"></circle>
+      </symbol>
+      <symbol id="icon-pulse" viewBox="0 0 24 24">
+        <polyline points="2,13 7,13 9,7 12,18 14,9 16,13 22,13"></polyline>
+      </symbol>
+      <symbol id="icon-bell" viewBox="0 0 24 24">
+        <path d="M12 3a5 5 0 0 0-5 5v3l-2 4h14l-2-4V8a5 5 0 0 0-5-5z"></path>
+        <path d="M10 19a2 2 0 0 0 4 0"></path>
+      </symbol>
+      <symbol id="icon-clock" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="8.5"></circle>
+        <line x1="12" y1="12" x2="12" y2="7"></line>
+        <line x1="12" y1="12" x2="15.5" y2="13.5"></line>
+      </symbol>
+      <symbol id="icon-sliders" viewBox="0 0 24 24">
+        <line x1="4" y1="6" x2="20" y2="6"></line><circle cx="9" cy="6" r="2" fill="var(--card, #fff)"></circle>
+        <line x1="4" y1="12" x2="20" y2="12"></line><circle cx="15" cy="12" r="2" fill="var(--card, #fff)"></circle>
+        <line x1="4" y1="18" x2="20" y2="18"></line><circle cx="7" cy="18" r="2" fill="var(--card, #fff)"></circle>
+      </symbol>
+      <symbol id="icon-chart" viewBox="0 0 24 24">
+        <line x1="4" y1="20" x2="20" y2="20"></line>
+        <rect x="6" y="13" width="3" height="7"></rect>
+        <rect x="11" y="9" width="3" height="11"></rect>
+        <rect x="16" y="5" width="3" height="15"></rect>
+      </symbol>
+      <symbol id="icon-user" viewBox="0 0 24 24">
+        <circle cx="12" cy="8" r="4"></circle>
+        <path d="M4 20a8 8 0 0 1 16 0"></path>
+      </symbol>
+      <symbol id="icon-home" viewBox="0 0 24 24">
+        <path d="M4 11.5 12 4l8 7.5"></path>
+        <path d="M6 10v9a1 1 0 0 0 1 1h3v-5h4v5h3a1 1 0 0 0 1-1v-9"></path>
+      </symbol>
+    </defs>
+  </svg>
+
+  <div class="topbar">
+    <div>
+      <h1>Adaptive Digital Cognitive &amp; Ergonomic Intelligence Platform</h1>
+      <p class="sub">Webcam-based digital wellbeing monitoring: fatigue, posture and attention analysis, a combined Digital Health Risk Index (DHRI), real-time alerts and recommendations, and session history.</p>
+    </div>
+    <div id="topbar-right" class="topbar-right hidden">
+      <span id="dhri-mini" class="dhri-mini"><svg class="icon"><use href="#icon-pulse"></use></svg><span id="dhri-mini-text">DHRI: -</span></span>
+      <span class="topbar-user"><span id="topbar-avatar" class="avatar"></span><span id="topbar-username"></span></span>
+    </div>
+  </div>
+
+  <!-- Shown when logged out -->
+  <div id="auth-view" class="card hidden">
+    <h2 id="auth-title" style="margin-top:0"><svg class="icon-lg"><use href="#icon-user"></use></svg>Log in</h2>
+    <form id="auth-form">
+      <label>Username <input id="username" autocomplete="username" required></label>
+      <label>Password <input id="password" type="password" autocomplete="current-password" required></label>
+      <div id="auth-error" class="error"></div>
+      <button id="auth-submit" type="submit">Log in</button>
+      <span id="switch-text">No account yet?</span>
+      <button id="switch-mode" type="button" class="link">Register</button>
+    </form>
+  </div>
+
+  <!-- Feature navigation (shown when logged in). Each button opens one page below;
+       only one page is visible at a time so the user no longer has to scroll through
+       every feature to find the one they want. -->
+  <nav id="main-nav" class="nav hidden" role="tablist" aria-label="Feature navigation">
+    <button type="button" data-page="home" id="tab-home" role="tab" aria-controls="page-home" aria-selected="false"><svg class="icon"><use href="#icon-home"></use></svg>Home</button>
+    <button type="button" data-page="live" id="tab-live" role="tab" aria-controls="page-live" aria-selected="false"><svg class="icon"><use href="#icon-camera"></use></svg>Live monitoring</button>
+    <button type="button" data-page="fatigue" id="tab-fatigue" role="tab" aria-controls="page-fatigue" aria-selected="false"><svg class="icon"><use href="#icon-eye"></use></svg>Fatigue</button>
+    <button type="button" data-page="posture" id="tab-posture" role="tab" aria-controls="page-posture" aria-selected="false"><svg class="icon"><use href="#icon-posture"></use></svg>Posture</button>
+    <button type="button" data-page="attention" id="tab-attention" role="tab" aria-controls="page-attention" aria-selected="false"><svg class="icon"><use href="#icon-target"></use></svg>Attention</button>
+    <button type="button" data-page="dhri" id="tab-dhri" role="tab" aria-controls="page-dhri" aria-selected="false"><svg class="icon"><use href="#icon-pulse"></use></svg>DHRI</button>
+    <button type="button" data-page="alerts" id="tab-alerts" role="tab" aria-controls="page-alerts" aria-selected="false"><svg class="icon"><use href="#icon-bell"></use></svg>Alerts &amp; tips</button>
+    <button type="button" data-page="session" id="tab-session" role="tab" aria-controls="page-session" aria-selected="false"><svg class="icon"><use href="#icon-clock"></use></svg>Session</button>
+    <button type="button" data-page="calibration" id="tab-calibration" role="tab" aria-controls="page-calibration" aria-selected="false"><svg class="icon"><use href="#icon-sliders"></use></svg>Calibration</button>
+    <button type="button" data-page="dashboard" id="tab-dashboard" role="tab" aria-controls="page-dashboard" aria-selected="false"><svg class="icon"><use href="#icon-chart"></use></svg>Dashboard</button>
+    <button type="button" data-page="profile" id="tab-profile" role="tab" aria-controls="page-profile" aria-selected="false"><svg class="icon"><use href="#icon-user"></use></svg>Profile</button>
+  </nav>
+
+  <!-- Breadcrumb / "back to Home" bar: shown above every feature page, hidden on Home itself.
+       Its text and visibility are kept in sync with the current page by switchPage() below. -->
+  <div id="page-breadcrumb" class="breadcrumb hidden">
+    <button type="button" class="back-home" data-page="home"><svg class="icon"><use href="#icon-home"></use></svg>Home</button>
+    <span class="crumb-sep">/</span>
+    <span id="crumb-current" class="crumb-current"></span>
+  </div>
+
+  <!-- Home hub: the default page after logging in. One colourful tile per feature; clicking a
+       tile opens that page, exactly like clicking the matching nav-bar button (both call
+       switchPage() through the same document-level [data-page] click listener). -->
+  <div id="page-home" class="page hidden" role="tabpanel" aria-labelledby="tab-home">
+    <div class="home-hero">
+      <h2>Welcome back<span id="home-username"></span></h2>
+      <p>Pick what you'd like to check. Your camera stays off until you open Live monitoring and press Start.</p>
+    </div>
+    <div class="tile-grid" id="home-grid">
+      <button type="button" class="tile tile-teal" data-page="live">
+        <span class="tile-icon"><svg><use href="#icon-camera"></use></svg></span>
+        <span class="tile-title">Live monitoring</span>
+        <span class="tile-desc">Camera preview and real-time eye measurements.</span>
+      </button>
+      <button type="button" class="tile tile-indigo" data-page="fatigue">
+        <span class="tile-icon"><svg><use href="#icon-eye"></use></svg></span>
+        <span class="tile-title">Fatigue</span>
+        <span class="tile-desc">Blink rate and eye-closure based fatigue state.</span>
+      </button>
+      <button type="button" class="tile tile-violet" data-page="posture">
+        <span class="tile-icon"><svg><use href="#icon-posture"></use></svg></span>
+        <span class="tile-title">Posture</span>
+        <span class="tile-desc">How you're sitting compared with your calibrated normal.</span>
+      </button>
+      <button type="button" class="tile tile-cyan" data-page="attention">
+        <span class="tile-icon"><svg><use href="#icon-target"></use></svg></span>
+        <span class="tile-title">Attention</span>
+        <span class="tile-desc">Whether you're facing the screen right now.</span>
+      </button>
+      <button type="button" class="tile tile-coral" data-page="dhri">
+        <span class="tile-icon"><svg><use href="#icon-pulse"></use></svg></span>
+        <span class="tile-title">DHRI</span>
+        <span class="tile-desc">One combined Digital Health Risk Index score.</span>
+      </button>
+      <button type="button" class="tile tile-rose" data-page="alerts">
+        <span class="tile-icon"><svg><use href="#icon-bell"></use></svg></span>
+        <span class="tile-title">Alerts &amp; tips</span>
+        <span class="tile-desc">Recent alerts and practical recommendations.</span>
+      </button>
+      <button type="button" class="tile tile-sky" data-page="session">
+        <span class="tile-icon"><svg><use href="#icon-clock"></use></svg></span>
+        <span class="tile-title">Session</span>
+        <span class="tile-desc">This session's active time and breaks.</span>
+      </button>
+      <button type="button" class="tile tile-slate" data-page="calibration">
+        <span class="tile-icon"><svg><use href="#icon-sliders"></use></svg></span>
+        <span class="tile-title">Calibration</span>
+        <span class="tile-desc">Record your normal sitting position and eyes.</span>
+      </button>
+      <button type="button" class="tile tile-blue" data-page="dashboard">
+        <span class="tile-icon"><svg><use href="#icon-chart"></use></svg></span>
+        <span class="tile-title">Dashboard</span>
+        <span class="tile-desc">History, weekly trends and CSV export.</span>
+      </button>
+      <button type="button" class="tile tile-stone" data-page="profile">
+        <span class="tile-icon"><svg><use href="#icon-user"></use></svg></span>
+        <span class="tile-title">Profile</span>
+        <span class="tile-desc">Account details and log out.</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Live monitoring page: camera preview + eye measurements -->
+  <div id="page-live" class="page hidden" role="tabpanel" aria-labelledby="tab-live">
+    <div id="monitor-card" class="card hidden">
+      <h2 style="margin-top:0"><svg class="icon-lg"><use href="#icon-camera"></use></svg>Live monitoring <span class="detail" style="font-size:0.8rem;font-weight:normal">(Phase 8: eyes, fatigue, posture and attention)</span></h2>
+      <span id="camera-indicator" class="indicator off">Camera OFF</span>
+      <p class="privacy">
+        The camera turns on only when you press <b>Start camera</b> and off when you press Stop or log out.
+        Images are processed on this computer, are never saved, and are never sent over the internet.
+        The preview is shown mirrored. A green box marks your face; your eyes are outlined in yellow, and in red while they are closed.
+      </p>
+      <div class="preview-box">
+        <img id="preview" alt="Live camera preview" class="hidden">
+        <div id="preview-placeholder" class="placeholder">Press Start camera to begin.</div>
+      </div>
+      <div class="row"><span class="name">Camera state</span><span id="m-state" class="detail">stopped</span></div>
+      <div class="row"><span class="name">Frame rate</span><span id="m-fps" class="detail">-</span></div>
+      <div class="row"><span class="name">Image size</span><span id="m-size" class="detail">-</span></div>
+      <div class="row"><span class="name">Face detection</span><span id="m-face" class="detail">-</span></div>
+      <div class="row"><span class="name">Eye aspect ratio (EAR)</span><span id="m-ear" class="detail">-</span></div>
+      <div class="row"><span class="name">Eyes</span><span id="m-eyes" class="detail">-</span></div>
+      <div class="row"><span class="name">Blinks counted</span><span id="m-blinks" class="detail">-</span></div>
+      <div class="row"><span class="name">Current eye-closure time</span><span id="m-closure-time" class="detail">-</span></div>
+      <div class="row"><span class="name">Blinks per minute (last 20 s)</span><span id="m-bpm" class="detail">-</span></div>
+      <div class="row"><span class="name">Eyes-closed share, PERCLOS-style (last 20 s)</span><span id="m-perclos" class="detail">-</span></div>
+      <div class="row"><span class="name">Longest closure (last 20 s)</span><span id="m-longest" class="detail">-</span></div>
+      <div class="row"><span class="name">Lighting</span><span id="m-light" class="detail">-</span></div>
+      <div class="row"><span class="name">Processing time per frame</span><span id="m-ms" class="detail">-</span></div>
+      <div id="m-face-warning" class="warning"></div>
+      <div id="m-cal-warning" class="warning"></div>
+      <div id="m-fps-warning" class="warning"></div>
+      <div id="m-warning" class="warning"></div>
+      <div id="m-error" class="error"></div>
+      <button id="start-btn" type="button">Start camera</button>
+      <button id="stop-btn" type="button" class="secondary" disabled>Stop camera</button>
+    </div>
+  </div>
+
+  <!-- Fatigue assessment page -->
+  <div id="page-fatigue" class="page hidden" role="tabpanel" aria-labelledby="tab-fatigue">
+    <div id="fatigue-card" class="card hidden">
+      <h2 style="margin-top:0"><svg class="icon-lg"><use href="#icon-eye"></use></svg>Fatigue assessment <span class="detail" style="font-size:0.8rem;font-weight:normal">(Phase 6)</span></h2>
+      <span id="f-mode" class="badge rules">DEMO / RULE-BASED MODE</span>
+      <p id="f-mode-message" class="small"></p>
+      <div id="f-state" class="f-state f-unavailable">Not available yet</div>
+      <div id="f-message" class="small"></div>
+      <ul id="f-reasons"></ul>
+      <div class="row"><span class="name">Fatigue indicator</span><span id="f-score" class="detail">-</span></div>
+      <div class="row"><span class="name">Episodes this session</span><span id="f-events" class="detail">-</span></div>
+      <p class="small">This is a monitoring indication, not a medical diagnosis. Fatigue is judged from the last 20 seconds
+        of eye behaviour, so it needs about 10 seconds of data after the camera starts. The thresholds are starting values that
+        have not been validated on real users.</p>
+    </div>
+  </div>
+
+  <!-- Posture page -->
+  <div id="page-posture" class="page hidden" role="tabpanel" aria-labelledby="tab-posture">
+    <div id="posture-card" class="card hidden">
+      <h2 style="margin-top:0"><svg class="icon-lg"><use href="#icon-posture"></use></svg>Posture <span class="detail" style="font-size:0.8rem;font-weight:normal">(Phase 7)</span></h2>
+      <div id="p-state" class="p-state p-unavailable">Not available yet</div>
+      <div id="p-message" class="small"></div>
+      <div id="p-note" class="small"></div>
+      <ul id="p-reasons"></ul>
+      <div class="row"><span class="name">Head tilt (vs your normal)</span><span id="p-tilt" class="detail">-</span></div>
+      <div class="row"><span class="name">Head nod, down is + (vs your normal)</span><span id="p-nod" class="detail">-</span></div>
+      <div class="row"><span class="name">Distance to the screen (vs your normal)</span><span id="p-distance" class="detail">-</span></div>
+      <div class="row"><span class="name">Head lower / sideways (vs your normal)</span><span id="p-position" class="detail">-</span></div>
+      <div class="row"><span class="name">Shoulders</span><span id="p-shoulders" class="detail">-</span></div>
+      <div class="row"><span class="name">Episodes this session</span><span id="p-events" class="detail">-</span></div>
+      <p class="small">Posture is compared with how YOU sat during calibration, so calibrate sitting the way you want to sit. Head
+        position is measured from the face; shoulders are used only when they are clearly visible. A warning appears only after
+        the posture has lasted several seconds. This is a monitoring indication, not medical advice. The limits are starting
+        values that have not been validated on real users.</p>
+    </div>
+  </div>
+
+  <!-- Attention page -->
+  <div id="page-attention" class="page hidden" role="tabpanel" aria-labelledby="tab-attention">
+    <div id="attention-card" class="card hidden">
+      <h2 style="margin-top:0"><svg class="icon-lg"><use href="#icon-target"></use></svg>Attention <span class="detail" style="font-size:0.8rem;font-weight:normal">(Phase 8)</span></h2>
+      <div id="a-state" class="a-state a-unavailable">Not available yet</div>
+      <div id="a-message" class="small"></div>
+      <ul id="a-reasons"></ul>
+      <div class="row"><span class="name">Head direction (vs facing your screen)</span><span id="a-direction" class="detail">-</span></div>
+      <div class="row"><span class="name">Attentive over the last minute</span><span id="a-percent" class="detail">-</span></div>
+      <div class="row"><span class="name">Away from the screen for</span><span id="a-away" class="detail">-</span></div>
+      <div class="row"><span class="name">Episodes this session</span><span id="a-events" class="detail">-</span></div>
+      <p class="small">Attention is estimated ONLY from whether your face is visible and where your head points, compared with where it
+        pointed when you calibrated. It cannot know where your eyes look or what you are thinking. Looking away has to last about
+        5 seconds before it is shown. &quot;Face not detected&quot; means you are away OR turned so far that the camera lost your face.
+        The limits are starting values that have not been validated on real users.</p>
+    </div>
+  </div>
+
+  <!-- DHRI page -->
+  <div id="page-dhri" class="page hidden" role="tabpanel" aria-labelledby="tab-dhri">
+    <div id="dhri-card" class="card hidden">
+      <h2 style="margin-top:0"><svg class="icon-lg"><use href="#icon-pulse"></use></svg>Digital Health Risk Index (DHRI) <span class="detail" style="font-size:0.8rem;font-weight:normal">(Phase 10)</span></h2>
+      <div id="dhri-level" class="dhri-level dhri-unavailable">Not available yet</div>
+      <div id="dhri-score" class="dhri-score"></div>
+      <div id="dhri-message" class="small"></div>
+      <div id="dhri-breakdown"></div>
+      <div class="row"><span class="name">Episodes this session</span><span id="dhri-events" class="detail">-</span></div>
+      <p class="small">DHRI combines fatigue (40%), posture (25%), attention (20%) and continuous exposure without a
+        break (15%) into one number from 0 to 100. Below 35 is LOW RISK, 35-65 is MODERATE, 65 and above is HIGH.
+        If an input is not available yet (for example, not calibrated), DHRI is calculated from whichever inputs
+        ARE available. <strong>DHRI is a project-specific digital wellbeing indicator, not a medically validated
+        health score and not a diagnosis.</strong> The weights and thresholds are our own starting values and have
+        not been validated on real users.</p>
+    </div>
+  </div>
+
+  <!-- Alerts and recommendations page -->
+  <div id="page-alerts" class="page hidden" role="tabpanel" aria-labelledby="tab-alerts">
+    <div id="alerts-card" class="card hidden">
+      <h2 style="margin-top:0"><svg class="icon-lg"><use href="#icon-bell"></use></svg>Alerts &amp; recommendations <span class="detail" style="font-size:0.8rem;font-weight:normal">(Phase 11)</span></h2>
+      <div class="row"><span class="name">Alerts this session</span><span id="al-count" class="detail">0</span></div>
+      <div id="al-recommendations"></div>
+      <p class="small" id="al-recent-heading">Recent alerts:</p>
+      <div id="al-recent"></div>
+      <p class="small">Each alert has its own cooldown, so the same alert will not repeat too often even if the
+        condition continues. Recommendations always reflect your current state and disappear once the condition
+        clears. These are simple, practical suggestions, not medical advice.</p>
+    </div>
+  </div>
+
+  <!-- Session / exposure tracking page -->
+  <div id="page-session" class="page hidden" role="tabpanel" aria-labelledby="tab-session">
+    <div id="session-card" class="card hidden">
+      <h2 style="margin-top:0"><svg class="icon-lg"><use href="#icon-clock"></use></svg>Session <span class="detail" style="font-size:0.8rem;font-weight:normal">(Phase 9)</span></h2>
+      <div class="row"><span class="name">This session</span><span id="ses-current" class="detail">not running</span></div>
+      <div class="row"><span class="name">Active time (excludes breaks)</span><span id="ses-active" class="detail">-</span></div>
+      <div class="row"><span class="name">Breaks taken</span><span id="ses-breaks" class="detail">-</span></div>
+      <p class="small">A break is counted once you have been away from the camera (or it has been covered) for at least
+        30 seconds -- a brief glance away is not a break. Nothing is saved until you press Stop.</p>
+      <div class="row"><span class="name">Today so far</span><span id="ses-today" class="detail">-</span></div>
+      <div id="ses-recent"></div>
+    </div>
+  </div>
+
+  <!-- Personal calibration page -->
+  <div id="page-calibration" class="page hidden" role="tabpanel" aria-labelledby="tab-calibration">
+    <div id="calibration-card" class="card hidden">
+      <h2 style="margin-top:0"><svg class="icon-lg"><use href="#icon-sliders"></use></svg>Personal calibration</h2>
+      <div class="row"><span class="name">Status</span><span id="c-status" class="detail">Not calibrated yet</span></div>
+      <p class="privacy">
+        Takes about 15 seconds and switches the camera on. Sit as you normally do, look at the screen and keep
+        your face visible. First you look at the screen, then you close your eyes for a few seconds
+        (a beep tells you when to close them and when to open them). This measures YOUR normal eye values so
+        the system does not rely on the same fixed numbers for everyone.
+      </p>
+      <div id="cal-panel" class="cal-panel hidden">
+        <div id="cal-message" class="cal-message"></div>
+        <div id="cal-countdown" class="cal-countdown"></div>
+        <div class="bar"><div id="cal-bar"></div></div>
+      </div>
+      <div id="cal-error" class="error"></div>
+      <div id="cal-success" class="success"></div>
+      <button id="cal-start" type="button">Start calibration</button>
+      <button id="cal-cancel" type="button" class="secondary hidden">Cancel</button>
+    </div>
+  </div>
+
+  <!-- Dashboard page: consolidated view of past monitoring history, built entirely from the
+       existing history/trends/full-history data and functionality (Phases 12-13) -- no new
+       backend, API or database work, just a single place to see it all at a glance. -->
+  <div id="page-dashboard" class="page hidden" role="tabpanel" aria-labelledby="tab-dashboard">
+    <div id="trends-card" class="card hidden">
+      <h2 style="margin-top:0"><svg class="icon-lg"><use href="#icon-chart"></use></svg>Dashboard <span class="detail" style="font-size:0.8rem;font-weight:normal">history &amp; trends, Phase 12-13</span></h2>
+      <div id="dash-today" class="dash-summary hidden"></div>
+      <div id="dash-week" class="dash-summary hidden"></div>
+      <p id="trends-empty" class="small">No finished sessions yet. Trends appear here after you press Stop at least once.</p>
+      <div id="trends-charts" class="hidden">
+        <div class="trend-chart"><div class="trend-title">Session duration (minutes)</div><svg id="trend-duration" class="trend-svg"></svg></div>
+        <div class="trend-chart"><div class="trend-title">Fatigue events (warning + fatigued)</div><svg id="trend-fatigue" class="trend-svg"></svg></div>
+        <div class="trend-chart"><div class="trend-title">Posture events (warning + poor)</div><svg id="trend-posture" class="trend-svg"></svg></div>
+        <div class="trend-chart"><div class="trend-title">Attention events (distracted + not detected)</div><svg id="trend-attention" class="trend-svg"></svg></div>
+        <div class="trend-chart"><div class="trend-title">DHRI events (moderate + high)</div><svg id="trend-dhri" class="trend-svg"></svg></div>
+        <div class="trend-chart"><div class="trend-title">Alerts</div><svg id="trend-alerts" class="trend-svg"></svg></div>
+      </div>
+      <p class="small">Each bar is one finished session, oldest on the left, most recent on the right (up to your last 20).
+        These count how many times each condition occurred during a session, not how severe any single moment was.</p>
+      <button id="history-toggle" type="button" class="secondary">View full history</button>
+      <button id="history-export" type="button" class="secondary">Download CSV</button>
+      <div id="history-export-status" class="small"></div>
+      <div id="history-full" class="hidden">
+        <table id="history-table" class="history-table">
+          <thead><tr>
+            <th>Started</th><th>Duration</th><th>Active</th><th>Breaks</th>
+            <th>Fatigue</th><th>Posture</th><th>Attention</th><th>DHRI</th><th>Alerts</th>
+          </tr></thead>
+          <tbody id="history-tbody"></tbody>
+        </table>
+        <p id="history-count" class="small"></p>
+        <button id="history-load-more" type="button" class="secondary hidden">Load more</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Profile / account page (also holds the privacy note and system check, previously always
+       visible at the bottom of the long scroll) -->
+  <div id="page-profile" class="page hidden" role="tabpanel" aria-labelledby="tab-profile">
+    <div id="profile-view" class="card hidden">
+      <h2 style="margin-top:0"><svg class="icon-lg"><use href="#icon-user"></use></svg>User profile</h2>
+      <div class="row"><span class="name">Username</span><span id="p-username" class="detail"></span></div>
+      <div class="row"><span class="name">Session status</span><span class="detail">Logged in</span></div>
+      <div class="row"><span class="name">Calibration status</span><span id="p-calibration" class="detail"></span></div>
+      <button id="logout" class="secondary" type="button">Log out</button>
+    </div>
+
+    <div class="note">
+      Your camera is never switched on by this page. Monitoring only starts after you log in,
+      calibrate and press Start camera. Passwords are stored only as salted hashes.
+    </div>
+
+    <details>
+      <summary>System check</summary>
+      <p id="server">Checking server...</p>
+      <div id="checks"></div>
+    </details>
+  </div>
+
+  <script>
+    let mode = "login";   // "login" or "register"
+
+    function show(id, visible) { document.getElementById(id).classList.toggle("hidden", !visible); }
+
+    // Turn a server error response into readable text
+    function errorText(body, fallback) {
+      if (body && typeof body.detail === "string") return body.detail;
+      return fallback || "Something went wrong. Please try again.";
+    }
+
+    async function api(method, url, payload) {
+      const options = { method: method, headers: {} };
+      if (payload) {
+        options.headers["Content-Type"] = "application/json";
+        options.body = JSON.stringify(payload);
+      }
+      const response = await fetch(url, options);
+      let body = null;
+      try { body = await response.json(); } catch (e) { /* no JSON body */ }
+      return { ok: response.ok, status: response.status, body: body };
+    }
+
+    function setMode(newMode) {
+      mode = newMode;
+      const registering = mode === "register";
+      document.getElementById("auth-title").textContent = registering ? "Create account" : "Log in";
+      document.getElementById("auth-submit").textContent = registering ? "Register" : "Log in";
+      document.getElementById("switch-text").textContent = registering ? "Already registered?" : "No account yet?";
+      document.getElementById("switch-mode").textContent = registering ? "Log in" : "Register";
+      document.getElementById("password").autocomplete = registering ? "new-password" : "current-password";
+      document.getElementById("auth-error").textContent = "";
+    }
+
+    // ------------------------------------------------------------------
+    // Feature navigation: turns the old single long scroll into a set of
+    // pages, one per feature, opened via the nav buttons. This is purely a
+    // display layer on top of the existing cards -- it does not change any
+    // of the monitoring, calibration, session or history logic below.
+    // ------------------------------------------------------------------
+    const NAV_PAGES = ["home", "live", "fatigue", "posture", "attention", "dhri", "alerts", "session", "calibration", "dashboard", "profile"];
+    const PAGE_LABELS = {
+      live: "Live monitoring", fatigue: "Fatigue", posture: "Posture", attention: "Attention",
+      dhri: "DHRI", alerts: "Alerts & tips", session: "Session", calibration: "Calibration",
+      dashboard: "Dashboard", profile: "Profile",
+    };
+    let currentPage = "home";
+
+    function switchPage(pageId) {
+      if (NAV_PAGES.indexOf(pageId) === -1) return;
+      currentPage = pageId;
+      NAV_PAGES.forEach(function (p) {
+        const el = document.getElementById("page-" + p);
+        show("page-" + p, p === pageId);
+        if (p === pageId) {
+          // Restart the fade-in animation even if this page was already the active one
+          // a moment ago (e.g. clicking Home, then the same tile again).
+          el.classList.remove("page-anim");
+          void el.offsetWidth;
+          el.classList.add("page-anim");
+        }
+      });
+      document.querySelectorAll("#main-nav button").forEach(function (btn) {
+        const isActive = btn.dataset.page === pageId;
+        btn.classList.toggle("active", isActive);
+        btn.setAttribute("aria-selected", isActive ? "true" : "false");
+      });
+      const breadcrumb = document.getElementById("page-breadcrumb");
+      if (pageId === "home") {
+        breadcrumb.classList.add("hidden");
+      } else {
+        breadcrumb.classList.remove("hidden");
+        document.getElementById("crumb-current").textContent = PAGE_LABELS[pageId] || pageId;
+      }
+    }
+
+    // One shared listener for every [data-page] button, wherever it lives: the nav bar, the
+    // breadcrumb's "Home" link, and every tile on the Home hub all navigate the same way.
+    document.addEventListener("click", function (event) {
+      const button = event.target.closest("button[data-page]");
+      if (button) switchPage(button.dataset.page);
+    });
+
+    async function refreshUser() {
+      const result = await api("GET", "/api/auth/me");
+      if (result.ok) {
+        document.getElementById("p-username").textContent = result.body.username;
+        document.getElementById("topbar-username").textContent = result.body.username;
+        document.getElementById("topbar-avatar").textContent = result.body.username.charAt(0).toUpperCase();
+        document.getElementById("home-username").textContent = ", " + result.body.username + "!";
+        const b = result.body;
+        document.getElementById("p-calibration").textContent = b.calibrated ? "Calibrated" : "Not calibrated yet";
+        document.getElementById("c-status").textContent = b.calibrated
+          ? "Calibrated on " + new Date(b.calibrated_at).toLocaleString() +
+            " (eyes open: " + b.ear_open + ", eyes closed: " + b.ear_closed + "). Posture and attention: " +
+            (b.posture_calibrated && b.attention_calibrated ? "calibrated" : "NOT calibrated - please calibrate again to enable them")
+          : "Not calibrated yet";
+        document.getElementById("cal-start").textContent = b.calibrated ? "Calibrate again" : "Start calibration";
+        show("auth-view", false);
+        show("profile-view", true);
+        show("dhri-card", true);
+        show("calibration-card", true);
+        show("monitor-card", true);
+        show("fatigue-card", true);
+        show("posture-card", true);
+        show("attention-card", true);
+        show("session-card", true);
+        show("alerts-card", true);
+        show("trends-card", true);
+        show("main-nav", true);
+        show("topbar-right", true);
+        switchPage(currentPage);
+        loadFatigueModelInfo();
+        loadSessionHistory();
+        startStatusPolling();
+      } else {
+        show("profile-view", false);
+        show("dhri-card", false);
+        show("calibration-card", false);
+        show("monitor-card", false);
+        show("fatigue-card", false);
+        show("posture-card", false);
+        show("attention-card", false);
+        show("session-card", false);
+        show("alerts-card", false);
+        show("trends-card", false);
+        show("main-nav", false);
+        show("topbar-right", false);
+        NAV_PAGES.forEach(function (p) { show("page-" + p, false); });
+        currentPage = "home";        // next login on this tab starts back on the Home hub
+        resetHistoryState();     // never let a later login on the same tab see the previous account's history
+        stopStatusPolling();
+        stopCalibrationPolling();
+        show("auth-view", true);
+      }
+    }
+
+    document.getElementById("switch-mode").addEventListener("click", function () {
+      setMode(mode === "login" ? "register" : "login");
+    });
+
+    document.getElementById("auth-form").addEventListener("submit", async function (event) {
+      event.preventDefault();
+      const payload = {
+        username: document.getElementById("username").value,
+        password: document.getElementById("password").value,
+      };
+      const result = await api("POST", "/api/auth/" + mode, payload);
+      if (result.ok) {
+        document.getElementById("password").value = "";
+        document.getElementById("auth-error").textContent = "";
+        await refreshUser();
+      } else {
+        document.getElementById("auth-error").textContent = errorText(result.body, "Please fill in both fields.");
+      }
+    });
+
+    document.getElementById("logout").addEventListener("click", async function () {
+      await api("POST", "/api/auth/logout");
+      await refreshUser();
+    });
+
+    async function loadSystemCheck() {
+      try {
+        const health = await (await fetch("/api/health")).json();
+        document.getElementById("server").textContent =
+          "Server: " + health.status + " | Database: " + health.database + " | Version " + health.version;
+        const check = await (await fetch("/api/system-check")).json();
+        const box = document.getElementById("checks");
+        check.checks.forEach(function (c) {
+          const row = document.createElement("div");
+          row.className = "row";
+          const status = document.createElement("span");
+          status.className = c.ok ? "ok" : "fail";
+          status.textContent = c.ok ? "OK" : "FAIL";
+          const name = document.createElement("span");
+          name.className = "name";
+          name.textContent = c.name;
+          const detail = document.createElement("span");
+          detail.className = "detail";
+          detail.textContent = c.detail;
+          row.append(status, name, detail);
+          box.appendChild(row);
+        });
+      } catch (err) {
+        document.getElementById("server").textContent = "Could not reach the server: " + err;
+      }
+    }
+
+
+    // ------------------------------------------------------------------
+    // Camera monitoring (Phase 3)
+    // ------------------------------------------------------------------
+    let statusTimer = null;
+    let frameLoopActive = false;
+    let cameraIsMine = false;      // true while THIS account is using the camera
+    let lastPreviewUrl = null;
+
+    function sleep(ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); }
+
+    function startStatusPolling() {
+      if (statusTimer === null) {
+        updateStatus();
+        statusTimer = setInterval(updateStatus, 1000);   // also tells the server "dashboard still open"
+      }
+    }
+
+    function stopStatusPolling() {
+      if (statusTimer !== null) { clearInterval(statusTimer); statusTimer = null; }
+      cameraIsMine = false;
+    }
+
+    function clearPreview() {
+      const img = document.getElementById("preview");
+      img.classList.add("hidden");
+      img.removeAttribute("src");
+      document.getElementById("preview-placeholder").classList.remove("hidden");
+      if (lastPreviewUrl) { URL.revokeObjectURL(lastPreviewUrl); lastPreviewUrl = null; }
+    }
+
+    async function frameLoop() {
+      if (frameLoopActive) return;
+      frameLoopActive = true;
+      const img = document.getElementById("preview");
+      try {
+        while (cameraIsMine) {
+          if (!document.hidden) {                       // no need to draw while the tab is hidden
+            const response = await fetch("/api/monitor/frame", { cache: "no-store" });
+            if (response.status === 200) {
+              const url = URL.createObjectURL(await response.blob());
+              img.src = url;
+              img.classList.remove("hidden");
+              document.getElementById("preview-placeholder").classList.add("hidden");
+              if (lastPreviewUrl) URL.revokeObjectURL(lastPreviewUrl);
+              lastPreviewUrl = url;
+            } else if (response.status !== 204) {
+              break;                                    // logged out or error: stop asking
+            }
+          }
+          await sleep(100);                             // about 10 preview images per second
+        }
+      } catch (err) { /* server unreachable: stop quietly, status polling will report it */ }
+      frameLoopActive = false;
+      clearPreview();
+    }
+
+    async function updateStatus() {
+      let result;
+      try { result = await api("GET", "/api/monitor/status"); } catch (err) { return; }
+      if (!result.ok) {
+        if (result.status === 401) { stopStatusPolling(); refreshUser(); }   // login expired
+        return;
+      }
+      const s = result.body;
+      cameraIsMine = s.owned_by_me && (s.state === "running" || s.state === "starting");
+
+      const indicator = document.getElementById("camera-indicator");
+      if (cameraIsMine) {
+        indicator.className = "indicator on";
+        indicator.textContent = "CAMERA ON";
+      } else if (s.busy_other_user) {
+        indicator.className = "indicator other";
+        indicator.textContent = "Camera in use by another account";
+      } else {
+        indicator.className = "indicator off";
+        indicator.textContent = "Camera OFF";
+      }
+
+      document.getElementById("m-state").textContent = s.state;
+      const running = cameraIsMine && s.state === "running";
+      document.getElementById("m-fps").textContent = running ? s.fps + " frames/second" : "-";
+      document.getElementById("m-size").textContent = running && s.frame_width ? s.frame_width + " x " + s.frame_height : "-";
+      document.getElementById("m-light").textContent = running ? s.lighting + " (brightness " + s.brightness + " / 255)" : "-";
+      document.getElementById("m-warning").textContent = running && s.lighting !== "ok" ? s.lighting_message : "";
+
+      const faceLabels = {
+        ok: "Face detected",
+        no_face: "No face detected",
+        multiple_faces: "Several faces (largest one is monitored)",
+        partial_face: "Face partly outside the view",
+      };
+      document.getElementById("m-face").textContent = running ? (faceLabels[s.face_status] || s.face_status) : "-";
+      document.getElementById("m-ms").textContent = running ? s.processing_ms + " ms" : "-";
+      document.getElementById("m-face-warning").textContent = running ? s.face_message : "";
+
+      // Eye measurements (Phase 5)
+      const eye = s.eye || {};
+      const fmt = function (value, digits, suffix) {
+        return value === null || value === undefined ? "-" : Number(value).toFixed(digits) + (suffix || "");
+      };
+      let earText = "-";
+      if (running) {
+        earText = eye.ear == null ? "not measured (no face, or image too dark)" :
+          fmt(eye.ear, 2) + "  (left " + fmt(eye.ear_left, 2) + ", right " + fmt(eye.ear_right, 2) + ")";
+      }
+      document.getElementById("m-ear").textContent = earText;
+
+      let eyesText = "-";
+      let windowText = "-";
+      if (running && eye.ear != null) {
+        if (eye.paused) eyesText = "paused while calibrating";
+        else if (!s.calibrated) eyesText = "needs calibration";
+        else eyesText = (eye.eyes_closed ? "CLOSED" : "open") + " (closure " + fmt(eye.closure * 100, 0, "%") + ")";
+      }
+      if (running && s.calibrated && !eye.paused) windowText = "collecting data...";
+      const ready = running && s.calibrated && !eye.paused && eye.blinks_per_min != null;
+      document.getElementById("m-eyes").textContent = eyesText;
+      document.getElementById("m-blinks").textContent =
+        running && s.calibrated && !eye.paused && eye.blink_count != null
+          ? eye.blink_count + (eye.long_closure_count ? "  (+ " + eye.long_closure_count + " long closures)" : "") : "-";
+      document.getElementById("m-closure-time").textContent =
+        running && s.calibrated && !eye.paused && eye.current_closure_s != null ? fmt(eye.current_closure_s, 1, " s") : "-";
+      document.getElementById("m-bpm").textContent = ready ? fmt(eye.blinks_per_min, 1) : windowText;
+      document.getElementById("m-perclos").textContent = ready ? fmt(eye.perclos * 100, 1, "%") : windowText;
+      document.getElementById("m-longest").textContent = ready ? fmt(eye.longest_closure_s, 1, " s") : windowText;
+
+      document.getElementById("m-cal-warning").textContent =
+        running && !s.calibrated && !s.calibrating
+          ? "Not calibrated yet. Please run the personal calibration (about 15 seconds) so blink and eye-closure analysis can start."
+          : "";
+      document.getElementById("m-fps-warning").textContent = running ? (s.fps_warning || "") : "";
+
+      renderFatigue(running ? (s.fatigue || {}) : null);
+      renderPosture(running ? (s.posture || {}) : null, running && !s.posture_calibrated && !s.calibrating);
+      renderAttention(running ? (s.attention || {}) : null, running && !s.attention_calibrated && !s.calibrating);
+      renderCurrentSession(running ? (s.session || {}) : null);
+      renderDHRI(running ? (s.dhri || {}) : null);
+      renderDHRIMini(running ? (s.dhri || {}) : null);
+      renderAlerts(running ? (s.alerts || {}) : null);
+
+      // Server messages such as "Camera not detected." or "stopped automatically ..."
+      if (s.message) document.getElementById("m-error").textContent = s.message;
+
+      document.getElementById("start-btn").disabled = s.camera_active;
+      document.getElementById("stop-btn").disabled = !cameraIsMine;
+
+      if (cameraIsMine) frameLoop();
+    }
+
+    document.getElementById("start-btn").addEventListener("click", async function () {
+      document.getElementById("m-error").textContent = "";
+      document.getElementById("start-btn").disabled = true;
+      // Ask for desktop-notification permission here, tied to this click (a real user gesture),
+      // so a HIGH DHRI risk later in the session can alert even if this browser tab isn't focused.
+      // Declining is fine -- the in-page alert (Alerts & tips) still works either way.
+      if (window.Notification && Notification.permission === "default") {
+        try { await Notification.requestPermission(); } catch (err) { /* ignore: in-page alerts still work */ }
+      }
+      const result = await api("POST", "/api/monitor/start");
+      if (!result.ok) document.getElementById("m-error").textContent = errorText(result.body);
+      await updateStatus();
+    });
+
+    document.getElementById("stop-btn").addEventListener("click", async function () {
+      document.getElementById("m-error").textContent = "";
+      await api("POST", "/api/monitor/stop");
+      await updateStatus();
+      await loadSessionHistory();     // the session just ended: refresh today's totals and the recent list
+    });
+
+
+    // ------------------------------------------------------------------
+    // Personal calibration (Phase 5)
+    // ------------------------------------------------------------------
+    let calTimer = null;
+    let calLastPhase = null;
+    let audioContext = null;
+
+    function beep(frequency, milliseconds) {
+      try {
+        if (!audioContext) return;
+        const oscillator = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+        oscillator.frequency.value = frequency;
+        gain.gain.value = 0.15;
+        oscillator.connect(gain);
+        gain.connect(audioContext.destination);
+        oscillator.start();
+        oscillator.stop(audioContext.currentTime + milliseconds / 1000);
+      } catch (err) { /* no sound available: the on-screen text still tells the user what to do */ }
+    }
+
+    function stopCalibrationPolling() {
+      if (calTimer !== null) { clearInterval(calTimer); calTimer = null; }
+      calLastPhase = null;
+      show("cal-panel", false);
+      show("cal-cancel", false);
+      document.getElementById("cal-start").disabled = false;
+    }
+
+    async function pollCalibration() {
+      let result;
+      try { result = await api("GET", "/api/calibration/status"); } catch (err) { return; }
+      if (!result.ok) { stopCalibrationPolling(); return; }
+      const c = result.body;
+
+      if (c.phase === "idle") {                    // camera stopped or logged out meanwhile
+        stopCalibrationPolling();
+        document.getElementById("cal-error").textContent = "Calibration was interrupted. Please try again.";
+        return;
+      }
+      document.getElementById("cal-message").textContent = c.message;
+      document.getElementById("cal-countdown").textContent =
+        c.active && c.seconds_left > 0 ? c.seconds_left + " s" : "";
+      document.getElementById("cal-bar").style.width = Math.round(c.progress * 100) + "%";
+
+      if (c.phase === "close" && calLastPhase !== "close") beep(880, 300);    // "close your eyes"
+      if (calLastPhase === "close" && c.phase !== "close") beep(660, 500);    // "open your eyes"
+      calLastPhase = c.phase;
+
+      if (!c.active) {                             // finished: done, failed or cancelled
+        stopCalibrationPolling();
+        if (c.result && c.result.ok) {
+          const b = c.result.baseline;
+          const postureText = c.result.posture_baseline
+            ? " Your normal sitting position was recorded" + (c.result.posture_baseline.shoulders ? " (with shoulders)." : " (head position only; shoulders were not clearly visible).")
+            : " Posture could NOT be calibrated: " + (c.result.posture_problem || "unknown reason") + " Eye calibration was saved.";
+          document.getElementById("cal-success").textContent =
+            "Calibration complete. Your normal eye value is " + b.ear_open.toFixed(2) +
+            " (open) and " + b.ear_closed.toFixed(2) + " (closed)." + postureText + (c.saved ? "" : " (Not saved: please try again.)");
+        } else {
+          document.getElementById("cal-error").textContent = c.message;
+        }
+        await refreshUser();
+      }
+    }
+
+    document.getElementById("cal-start").addEventListener("click", async function () {
+      document.getElementById("cal-error").textContent = "";
+      document.getElementById("cal-success").textContent = "";
+      // Sound must be prepared inside a click for the browser to allow it
+      try {
+        audioContext = audioContext || new (window.AudioContext || window.webkitAudioContext)();
+        if (audioContext.state === "suspended") await audioContext.resume();
+      } catch (err) { audioContext = null; }
+
+      document.getElementById("cal-start").disabled = true;
+      const result = await api("POST", "/api/calibration/start");
+      if (!result.ok) {
+        document.getElementById("cal-error").textContent = errorText(result.body);
+        document.getElementById("cal-start").disabled = false;
+        return;
+      }
+      show("cal-panel", true);
+      show("cal-cancel", true);
+      calLastPhase = null;
+      pollCalibration();
+      calTimer = setInterval(pollCalibration, 250);   // fast, so the beeps come on time
+    });
+
+    document.getElementById("cal-cancel").addEventListener("click", async function () {
+      await api("POST", "/api/calibration/cancel");
+    });
+
+
+    // ------------------------------------------------------------------
+    // Fatigue assessment (Phase 6)
+    // ------------------------------------------------------------------
+    function setFatigueMode(info) {
+      const badge = document.getElementById("f-mode");
+      badge.textContent = info.mode_label;
+      badge.className = "badge " + (info.mode === "ml" ? "ml" : "rules");
+    }
+
+    function describeModel(summary) {
+      if (!summary) return "";
+      const pct = function (v) { return v === null || v === undefined ? "n/a" : Math.round(v * 100) + "%"; };
+      const counts = summary.class_counts || {};
+      return "Trained on " + summary.rows + " recordings (" + (counts.normal || 0) + " normal, " + (counts.fatigued || 0) +
+        " fatigued) from " + summary.sessions + " sessions and " + summary.participants + " participant(s). " +
+        "Cross-validated on that same data (test people/sessions kept separate): accuracy " + pct(summary.cv_accuracy) +
+        ", precision " + pct(summary.cv_precision) + ", recall " + pct(summary.cv_recall) +
+        ". This does not show how well it works for other people.";
+    }
+
+    async function loadFatigueModelInfo() {
+      let result;
+      try { result = await api("GET", "/api/fatigue/model"); } catch (err) { return; }
+      if (!result.ok) return;
+      setFatigueMode(result.body);
+      document.getElementById("f-mode-message").textContent =
+        [result.body.message, describeModel(result.body.summary)].filter(Boolean).join(" ");
+    }
+
+    function renderFatigue(f) {
+      const stateBox = document.getElementById("f-state");
+      const reasons = document.getElementById("f-reasons");
+      reasons.textContent = "";
+      if (f === null || !f.state) {                       // camera off, or no assessment yet
+        stateBox.className = "f-state f-unavailable";
+        stateBox.textContent = "Not available yet";
+        document.getElementById("f-message").textContent = f === null ? "Start the camera to assess fatigue." : "";
+        document.getElementById("f-score").textContent = "-";
+        document.getElementById("f-events").textContent = "-";
+        return;
+      }
+      if (f.mode_label) {
+        setFatigueMode(f);
+      }
+      const labels = { normal: "NORMAL", warning: "WARNING", fatigued: "FATIGUED", unavailable: "Not available yet" };
+      stateBox.className = "f-state f-" + f.state;
+      stateBox.textContent = labels[f.state] || f.state;
+      document.getElementById("f-message").textContent = f.message || "";
+      (f.reasons || []).forEach(function (text) {
+        const item = document.createElement("li");
+        item.textContent = text;
+        reasons.appendChild(item);
+      });
+      if (f.score === null || f.score === undefined) {
+        document.getElementById("f-score").textContent = "-";
+      } else {
+        document.getElementById("f-score").textContent = Math.round(f.score * 100) + "%  " +
+          (f.mode === "ml" ? "(model probability)" : "(rule score: 50% = warning level, 100% = fatigue level)");
+      }
+      const e = f.events || {};
+      document.getElementById("f-events").textContent = (e.warning || 0) + " warning, " + (e.fatigued || 0) + " fatigued";
+    }
+
+
+    // ------------------------------------------------------------------
+    // Posture (Phase 7)
+    // ------------------------------------------------------------------
+    function signed(value, digits, suffix) {
+      if (value === null || value === undefined) return "-";
+      return (value > 0 ? "+" : "") + Number(value).toFixed(digits) + (suffix || "");
+    }
+
+    function renderPosture(p, needsCalibration) {
+      const stateBox = document.getElementById("p-state");
+      const reasons = document.getElementById("p-reasons");
+      reasons.textContent = "";
+      const clear = function (message) {
+        stateBox.className = "p-state p-unavailable";
+        stateBox.textContent = "Not available yet";
+        document.getElementById("p-message").textContent = message;
+        document.getElementById("p-note").textContent = "";
+        ["p-tilt", "p-nod", "p-distance", "p-position", "p-shoulders", "p-events"].forEach(function (id) {
+          document.getElementById(id).textContent = "-";
+        });
+      };
+      if (p === null) { clear("Start the camera to monitor posture."); return; }
+      if (!p.state) { clear(""); return; }
+
+      const labels = { good: "GOOD", warning: "WARNING", poor: "POOR", unavailable: "Not available yet" };
+      stateBox.className = "p-state p-" + p.state;
+      stateBox.textContent = labels[p.state] || p.state;
+      document.getElementById("p-message").textContent = p.message || (needsCalibration ? "Posture is not calibrated yet. Please calibrate again (about 15 seconds)." : "");
+      const noteParts = [p.note, p.shoulder_model_message].filter(Boolean);
+      document.getElementById("p-note").textContent = noteParts.join(" ");
+      (p.reasons || []).forEach(function (text) {
+        const item = document.createElement("li");
+        item.textContent = text;
+        reasons.appendChild(item);
+      });
+      const d = p.deviations;
+      if (d) {
+        document.getElementById("p-tilt").textContent = signed(d.head_tilt_deg, 1, " deg");
+        document.getElementById("p-nod").textContent = signed(d.head_nod_deg, 1, " deg");
+        document.getElementById("p-distance").textContent = signed(d.distance_pct, 0, "%") + (d.distance_pct > 0 ? " (closer)" : d.distance_pct < 0 ? " (further)" : "");
+        document.getElementById("p-position").textContent = "lower " + signed(d.head_drop_pct, 0, "%") + ", sideways " + signed(d.head_shift_pct, 0, "%");
+        document.getElementById("p-shoulders").textContent = p.shoulders_used ? "used, tilt " + signed(d.shoulder_tilt_deg, 1, " deg") : "not used";
+      } else {
+        ["p-tilt", "p-nod", "p-distance", "p-position", "p-shoulders"].forEach(function (id) {
+          document.getElementById(id).textContent = "-";
+        });
+      }
+      const e = p.events || {};
+      document.getElementById("p-events").textContent = (e.warning || 0) + " warning, " + (e.poor || 0) + " poor";
+    }
+
+
+    // ------------------------------------------------------------------
+    // Attention (Phase 8)
+    // ------------------------------------------------------------------
+    function renderAttention(a, needsCalibration) {
+      const stateBox = document.getElementById("a-state");
+      const reasons = document.getElementById("a-reasons");
+      reasons.textContent = "";
+      const clear = function (message) {
+        stateBox.className = "a-state a-unavailable";
+        stateBox.textContent = "Not available yet";
+        document.getElementById("a-message").textContent = message;
+        ["a-direction", "a-percent", "a-away", "a-events"].forEach(function (id) {
+          document.getElementById(id).textContent = "-";
+        });
+      };
+      if (a === null) { clear("Start the camera to monitor attention."); return; }
+      if (!a.state) { clear(""); return; }
+
+      const labels = { attentive: "ATTENTIVE", distracted: "DISTRACTED / LOOKING AWAY", no_face: "FACE NOT DETECTED", unavailable: "Not available yet" };
+      stateBox.className = "a-state a-" + a.state;
+      stateBox.textContent = labels[a.state] || a.state;
+      document.getElementById("a-message").textContent = a.message ||
+        (needsCalibration ? "Attention needs a new calibration (about 15 seconds) so the system knows where your head points when you look at your screen." : "");
+      (a.reasons || []).forEach(function (text) {
+        const item = document.createElement("li");
+        item.textContent = text;
+        reasons.appendChild(item);
+      });
+      const d = a.deviations;
+      document.getElementById("a-direction").textContent = d
+        ? "turned " + signed(d.head_turn_deg, 1, " deg") + ", up/down " + signed(d.head_up_down_deg, 1, " deg (down is +)")
+        : "-";
+      document.getElementById("a-percent").textContent =
+        a.attentive_percent === null || a.attentive_percent === undefined ? "collecting data..." : a.attentive_percent + "%";
+      const away = a.continuous_away_s || 0;
+      document.getElementById("a-away").textContent =
+        a.state === "unavailable" ? "-" : (away > 0 ? Math.round(away) + " s" + (a.extended_absence ? " (extended absence)" : "") : "not away");
+      const e = a.events || {};
+      document.getElementById("a-events").textContent = (e.distracted || 0) + " distracted, " + (e.no_face || 0) + " face not detected";
+    }
+
+    // ------------------------------------------------------------------
+    // Session / exposure (Phase 9)
+    // ------------------------------------------------------------------
+    function formatDuration(seconds) {
+      if (seconds === null || seconds === undefined) return "-";
+      const total = Math.round(seconds);
+      const h = Math.floor(total / 3600), m = Math.floor((total % 3600) / 60), s = total % 60;
+      if (h > 0) return h + "h " + m + "m";
+      if (m > 0) return m + "m " + s + "s";
+      return s + "s";
+    }
+
+    function renderCurrentSession(session) {
+      if (session === null || !session.duration_s) {
+        document.getElementById("ses-current").textContent = "not running";
+        document.getElementById("ses-active").textContent = "-";
+        document.getElementById("ses-breaks").textContent = "-";
+        return;
+      }
+      document.getElementById("ses-current").textContent = formatDuration(session.duration_s) + " so far";
+      document.getElementById("ses-active").textContent = formatDuration(session.active_duration_s);
+      document.getElementById("ses-breaks").textContent = session.break_count +
+        (session.break_count > 0 ? " (" + formatDuration(session.break_duration_s) + " total)" : "");
+    }
+
+    async function loadSessionHistory() {
+      let result;
+      try { result = await api("GET", "/api/monitor/history"); } catch (err) { return; }
+      if (!result.ok) return;
+      const today = result.body.today;
+      document.getElementById("ses-today").textContent = today.session_count === 0
+        ? "no sessions yet"
+        : today.session_count + " session" + (today.session_count === 1 ? "" : "s") + ", " +
+          formatDuration(today.duration_s) + " total (" + formatDuration(today.active_duration_s) + " active), " +
+          today.break_count + " break" + (today.break_count === 1 ? "" : "s");
+
+      // Same "today" summary, shown again at the top of the Dashboard page so history can be
+      // read there without switching to the Session page first. No extra API call: reuses the
+      // /api/monitor/history response already fetched above.
+      const dashToday = document.getElementById("dash-today");
+      if (today.session_count === 0) {
+        dashToday.classList.add("hidden");
+      } else {
+        dashToday.classList.remove("hidden");
+        dashToday.textContent = "Today: " + today.session_count + " session" + (today.session_count === 1 ? "" : "s") + ", " +
+          formatDuration(today.duration_s) + " total (" + formatDuration(today.active_duration_s) + " active), " +
+          today.break_count + " break" + (today.break_count === 1 ? "" : "s") + ".";
+      }
+
+      // "This week" (Monday 00:00 local time to now), computed client-side from the same
+      // up-to-20 "recent" sessions the history endpoint already returns -- no new API call.
+      // With more than 20 sessions in a week this undercounts; it is a quick glance stat,
+      // not the authoritative total (the full history table/export below has the real data).
+      renderWeekSummary(result.body.recent);
+
+      const box = document.getElementById("ses-recent");
+      box.textContent = "";
+      renderTrendCharts(result.body.recent);
+      if (result.body.recent.length === 0) return;
+      const heading = document.createElement("p");
+      heading.className = "small";
+      heading.style.marginTop = "10px";
+      heading.textContent = "Recent sessions:";
+      box.appendChild(heading);
+      result.body.recent.forEach(function (row) {
+        const line = document.createElement("div");
+        line.className = "row";
+        const label = document.createElement("span");
+        label.className = "name";
+        label.textContent = new Date(row.start_time).toLocaleString();
+        const value = document.createElement("span");
+        value.className = "detail";
+        value.textContent = formatDuration(row.duration_s) + ", " + row.break_count + " break(s), " +
+          (row.fatigue_event_count || 0) + " fatigue, " + (row.posture_poor_count || 0) + " posture, " +
+          (row.attention_no_face_count || 0) + " away events";
+        line.append(label, value);
+        box.appendChild(line);
+      });
+    }
+
+    // Monday 00:00 (local time) of the week containing `date`.
+    function startOfWeek(date) {
+      const d = new Date(date);
+      d.setHours(0, 0, 0, 0);
+      const day = d.getDay();                        // 0 = Sunday ... 6 = Saturday
+      const diff = day === 0 ? -6 : 1 - day;          // days back to Monday
+      d.setDate(d.getDate() + diff);
+      return d;
+    }
+
+    function renderWeekSummary(recentSessions) {
+      const box = document.getElementById("dash-week");
+      const weekStart = startOfWeek(new Date());
+      const inWeek = (recentSessions || []).filter(function (row) {
+        return new Date(row.start_time) >= weekStart;
+      });
+      if (inWeek.length === 0) {
+        box.classList.add("hidden");
+        return;
+      }
+      const totals = inWeek.reduce(function (acc, row) {
+        acc.duration_s += row.duration_s || 0;
+        acc.active_duration_s += row.active_duration_s || 0;
+        acc.break_count += row.break_count || 0;
+        return acc;
+      }, { duration_s: 0, active_duration_s: 0, break_count: 0 });
+      box.classList.remove("hidden");
+      box.textContent = "This week: " + inWeek.length + " session" + (inWeek.length === 1 ? "" : "s") + ", " +
+        formatDuration(totals.duration_s) + " total (" + formatDuration(totals.active_duration_s) + " active), " +
+        totals.break_count + " break" + (totals.break_count === 1 ? "" : "s") +
+        (inWeek.length >= 20 ? " (showing up to the last 20 sessions)." : ".");
+    }
+
+    // ------------------------------------------------------------------
+    // DHRI - Digital Health Risk Index (Phase 10)
+    // ------------------------------------------------------------------
+    const DHRI_INPUT_LABELS = { fatigue: "Fatigue", posture: "Posture", attention: "Attention", exposure: "Exposure" };
+    const DHRI_BAR_COLOR = { fatigue: "#2563eb", posture: "#9333ea", attention: "#0d9488", exposure: "#ea580c" };
+
+    function renderDHRI(d) {
+      const levelBox = document.getElementById("dhri-level");
+      const scoreBox = document.getElementById("dhri-score");
+      const breakdown = document.getElementById("dhri-breakdown");
+      breakdown.textContent = "";
+      if (d === null || !d.level) {
+        levelBox.className = "dhri-level dhri-unavailable";
+        levelBox.textContent = "Not available yet";
+        scoreBox.textContent = "";
+        document.getElementById("dhri-message").textContent = d === null ? "Start the camera to calculate DHRI." : "";
+        document.getElementById("dhri-events").textContent = "-";
+        return;
+      }
+      const labels = { low: "LOW RISK", moderate: "MODERATE RISK", high: "HIGH RISK", unavailable: "Not available yet" };
+      levelBox.className = "dhri-level dhri-" + d.level;
+      levelBox.textContent = labels[d.level] || d.level;
+      if (d.level === "unavailable") {
+        scoreBox.textContent = "";
+        const missing = (d.missing_inputs || []).map(function (name) { return DHRI_INPUT_LABELS[name] || name; });
+        document.getElementById("dhri-message").textContent = missing.length
+          ? "Waiting for: " + missing.join(", ") + "."
+          : "Waiting for enough data.";
+        document.getElementById("dhri-events").textContent = "-";
+        return;
+      }
+      scoreBox.textContent = d.score + " out of 100";
+      const missing = (d.missing_inputs || []).map(function (name) { return DHRI_INPUT_LABELS[name] || name; });
+      document.getElementById("dhri-message").textContent = missing.length
+        ? "Calculated from the available inputs; not yet available: " + missing.join(", ") + "."
+        : "";
+      ["fatigue", "posture", "attention", "exposure"].forEach(function (name) {
+        const contribution = (d.contributions || {})[name];
+        if (contribution === undefined) return;      // this input was missing; do not show a bar for it
+        const row = document.createElement("div");
+        row.className = "dhri-bar-row";
+        const label = document.createElement("span");
+        label.className = "dhri-bar-label";
+        label.textContent = DHRI_INPUT_LABELS[name];
+        const track = document.createElement("span");
+        track.className = "dhri-bar-track";
+        const fill = document.createElement("span");
+        fill.className = "dhri-bar-fill";
+        fill.style.width = Math.min(100, contribution) + "%";
+        fill.style.background = DHRI_BAR_COLOR[name];
+        track.appendChild(fill);
+        const value = document.createElement("span");
+        value.className = "dhri-bar-value";
+        value.textContent = contribution.toFixed(1);
+        row.append(label, track, value);
+        breakdown.appendChild(row);
+      });
+      const e = d.events || {};
+      document.getElementById("dhri-events").textContent = (e.moderate || 0) + " moderate, " + (e.high || 0) + " high";
+    }
+
+    // Compact, always-visible DHRI badge in the top bar, so the headline risk level stays in
+    // view no matter which feature page is currently open. Uses the same data as renderDHRI above.
+    const DHRI_LEVEL_LABEL = { low: "LOW", moderate: "MODERATE", high: "HIGH" };
+    function renderDHRIMini(d) {
+      const mini = document.getElementById("dhri-mini");
+      const text = document.getElementById("dhri-mini-text");
+      mini.className = "dhri-mini";
+      const level = d && d.level ? d.level : "unavailable";
+      if (level === "unavailable") {
+        text.textContent = "DHRI: -";
+      } else {
+        mini.classList.add("dhri-mini-" + level);
+        text.textContent = "DHRI " + d.score + " (" + (DHRI_LEVEL_LABEL[level] || level) + ")";
+      }
+      maybeNotifyHighRisk(level, d);
+    }
+
+    // Desktop notification when DHRI *enters* HIGH risk -- a louder signal than the in-page
+    // alert for someone who has tabbed away to another window. Fires once per entry into HIGH
+    // (tracked via lastDhriLevel) and at most once every 5 minutes even if it stays HIGH, so it
+    // cannot spam. Entirely additive: the existing in-page alerts/recommendations are unchanged.
+    let lastDhriLevel = null;
+    let lastHighNotifyAt = 0;
+    const HIGH_RISK_RENOTIFY_MS = 5 * 60 * 1000;
+
+    function maybeNotifyHighRisk(level, d) {
+      const enteringHigh = level === "high" && lastDhriLevel !== "high";
+      const dueForRenotify = level === "high" && Date.now() - lastHighNotifyAt > HIGH_RISK_RENOTIFY_MS;
+      lastDhriLevel = level;
+      if (!enteringHigh && !dueForRenotify) return;
+      lastHighNotifyAt = Date.now();
+      if (!window.Notification || Notification.permission !== "granted") return;
+      try {
+        new Notification("Digital Health Risk Index: HIGH", {
+          body: "Your DHRI is " + (d && d.score != null ? d.score : "high") + "/100. Consider a short break.",
+          tag: "dhri-high",     // replaces any earlier HIGH notification instead of stacking them
+        });
+      } catch (err) { /* some platforms restrict Notification from a background page; ignore */ }
+    }
+
+    // ------------------------------------------------------------------
+    // Alerts and recommendations (Phase 11)
+    // ------------------------------------------------------------------
+    function renderAlerts(a) {
+      const recommendationsBox = document.getElementById("al-recommendations");
+      const recentBox = document.getElementById("al-recent");
+      const heading = document.getElementById("al-recent-heading");
+      recommendationsBox.textContent = "";
+      recentBox.textContent = "";
+      if (a === null || a.total_count === undefined) {
+        document.getElementById("al-count").textContent = "0";
+        heading.classList.add("hidden");
+        return;
+      }
+      document.getElementById("al-count").textContent = a.total_count;
+
+      (a.recommendations || []).forEach(function (text) {
+        const item = document.createElement("div");
+        item.className = "al-recommendation";
+        item.textContent = text;
+        recommendationsBox.appendChild(item);
+      });
+
+      const recent = a.recent_alerts || [];
+      heading.classList.toggle("hidden", recent.length === 0);
+      recent.forEach(function (alert) {
+        const row = document.createElement("div");
+        row.className = "al-alert-item";
+        const message = document.createElement("span");
+        message.textContent = alert.message;
+        const time = document.createElement("span");
+        time.className = "al-alert-time";
+        time.textContent = formatDuration(alert.at_s) + " into the session";
+        row.append(message, time);
+        recentBox.appendChild(row);
+      });
+    }
+
+    // ------------------------------------------------------------------
+    // History and trend graphs (Phase 12) -- plain SVG bar charts, no external chart library:
+    // consistent with this project's offline-first design (nothing here needs internet after setup).
+    // ------------------------------------------------------------------
+
+    // Pure function: turns the "recent" sessions list (newest-first, as the API returns it) into
+    // chronologically-ordered {label, value} points (oldest on the left, matching how a trend reads).
+    function computeTrendPoints(sessions, valueFn) {
+      const chronological = sessions.slice().reverse();
+      return chronological.map(function (row) {
+        const date = new Date(row.start_time);
+        return { label: (date.getMonth() + 1) + "/" + date.getDate(), value: valueFn(row) || 0 };
+      });
+    }
+
+    // Pure function: builds an SVG bar chart as a markup STRING from a list of {label, value} points.
+    function buildBarChartSVG(points, width, height) {
+      if (points.length === 0) return "";
+      const maxValue = Math.max(1, Math.max.apply(null, points.map(function (p) { return p.value; })));
+      const barGap = 3;
+      const barWidth = Math.max(2, (width - barGap * (points.length - 1)) / points.length);
+      const chartHeight = height - 16;                       // leave room for the value label above the tallest bar
+      let bars = "";
+      points.forEach(function (point, i) {
+        const barHeight = Math.max(1, (point.value / maxValue) * chartHeight);
+        const x = i * (barWidth + barGap);
+        const y = height - barHeight;
+        const color = point.value === 0 ? "#d1d5db" : "#2563eb";
+        bars += '<rect x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + barWidth.toFixed(1) +
+          '" height="' + barHeight.toFixed(1) + '" fill="' + color + '" rx="1.5">' +
+          '<title>' + point.label + ': ' + point.value + '</title></rect>';
+      });
+      return '<svg viewBox="0 0 ' + width + ' ' + height + '" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">' + bars + '</svg>';
+    }
+
+    function renderOneTrendChart(elementId, sessions, valueFn) {
+      const points = computeTrendPoints(sessions, valueFn);
+      const element = document.getElementById(elementId);
+      element.innerHTML = buildBarChartSVG(points, 400, 70);
+    }
+
+    function renderTrendCharts(sessions) {
+      const hasData = sessions && sessions.length > 0;
+      document.getElementById("trends-empty").classList.toggle("hidden", hasData);
+      document.getElementById("trends-charts").classList.toggle("hidden", !hasData);
+      if (!hasData) return;
+      renderOneTrendChart("trend-duration", sessions, function (r) { return Math.round(r.duration_s / 60); });
+      renderOneTrendChart("trend-fatigue", sessions, function (r) { return (r.fatigue_warning_count || 0) + (r.fatigue_event_count || 0); });
+      renderOneTrendChart("trend-posture", sessions, function (r) { return (r.posture_warning_count || 0) + (r.posture_poor_count || 0); });
+      renderOneTrendChart("trend-attention", sessions, function (r) { return (r.attention_distracted_count || 0) + (r.attention_no_face_count || 0); });
+      renderOneTrendChart("trend-dhri", sessions, function (r) { return (r.dhri_moderate_count || 0) + (r.dhri_high_count || 0); });
+      renderOneTrendChart("trend-alerts", sessions, function (r) { return r.alert_count || 0; });
+    }
+
+    // ------------------------------------------------------------------
+    // Full history table with pagination (Phase 13)
+    // ------------------------------------------------------------------
+    let historyOffset = 0;
+    let historyTotalCount = 0;
+    let historyLoaded = false;
+    const HISTORY_PAGE_SIZE = 20;
+
+    function resetHistoryState() {
+      historyOffset = 0;
+      historyTotalCount = 0;
+      historyLoaded = false;
+      document.getElementById("history-tbody").textContent = "";
+      document.getElementById("history-count").textContent = "";
+      document.getElementById("history-load-more").classList.add("hidden");
+      document.getElementById("history-full").classList.add("hidden");
+      document.getElementById("history-toggle").textContent = "View full history";
+      document.getElementById("dash-today").classList.add("hidden");
+      document.getElementById("dash-week").classList.add("hidden");
+    }
+
+    function appendHistoryRows(sessions) {
+      const tbody = document.getElementById("history-tbody");
+      sessions.forEach(function (row) {
+        const tr = document.createElement("tr");
+        const cells = [
+          new Date(row.start_time).toLocaleString(),
+          formatDuration(row.duration_s),
+          formatDuration(row.active_duration_s),
+          String(row.break_count),
+          (row.fatigue_warning_count || 0) + "+" + (row.fatigue_event_count || 0),
+          (row.posture_warning_count || 0) + "+" + (row.posture_poor_count || 0),
+          (row.attention_distracted_count || 0) + "+" + (row.attention_no_face_count || 0),
+          (row.dhri_moderate_count || 0) + "+" + (row.dhri_high_count || 0),
+          String(row.alert_count || 0),
+        ];
+        cells.forEach(function (text) {
+          const td = document.createElement("td");
+          td.textContent = text;
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      });
+    }
+
+    async function loadHistoryPage() {
+      let result;
+      try { result = await api("GET", "/api/monitor/sessions?offset=" + historyOffset + "&limit=" + HISTORY_PAGE_SIZE); }
+      catch (err) { return; }
+      if (!result.ok) return;
+      appendHistoryRows(result.body.sessions);
+      historyOffset += result.body.sessions.length;
+      historyTotalCount = result.body.total_count;
+      document.getElementById("history-count").textContent =
+        "Showing " + historyOffset + " of " + historyTotalCount + " session" + (historyTotalCount === 1 ? "" : "s") + ".";
+      document.getElementById("history-load-more").classList.toggle("hidden", historyOffset >= historyTotalCount);
+    }
+
+    document.getElementById("history-toggle").addEventListener("click", async function () {
+      const full = document.getElementById("history-full");
+      const toggleButton = document.getElementById("history-toggle");
+      const nowHidden = full.classList.toggle("hidden");
+      toggleButton.textContent = nowHidden ? "View full history" : "Hide full history";
+      if (!nowHidden && !historyLoaded) {
+        historyLoaded = true;
+        await loadHistoryPage();
+      }
+    });
+
+    document.getElementById("history-load-more").addEventListener("click", loadHistoryPage);
+
+    // ------------------------------------------------------------------
+    // CSV export of full session history, for a report the user can keep or hand in.
+    // Reuses /api/monitor/sessions (the same paginated endpoint the full-history table already
+    // uses) rather than adding a new backend endpoint: it just walks every page client-side.
+    // ------------------------------------------------------------------
+    function csvEscape(value) {
+      const text = String(value === null || value === undefined ? "" : value);
+      return /[",\n]/.test(text) ? '"' + text.replace(/"/g, '""') + '"' : text;
+    }
+
+    async function fetchAllSessionsForExport(onProgress) {
+      const rows = [];
+      let offset = 0;
+      let total = Infinity;
+      while (offset < total) {
+        const result = await api("GET", "/api/monitor/sessions?offset=" + offset + "&limit=100");
+        if (!result.ok) throw new Error(errorText(result.body, "Could not load session history."));
+        rows.push.apply(rows, result.body.sessions);
+        offset += result.body.sessions.length;
+        total = result.body.total_count;
+        if (onProgress) onProgress(offset, total);
+        if (result.body.sessions.length === 0) break;   // safety net against an infinite loop
+      }
+      return rows;
+    }
+
+    function sessionsToCsv(rows) {
+      const headers = [
+        "start_time", "duration_s", "active_duration_s", "break_count",
+        "fatigue_warning_count", "fatigue_event_count",
+        "posture_warning_count", "posture_poor_count",
+        "attention_distracted_count", "attention_no_face_count",
+        "dhri_moderate_count", "dhri_high_count", "alert_count",
+      ];
+      const lines = [headers.join(",")];
+      rows.forEach(function (row) {
+        lines.push(headers.map(function (key) { return csvEscape(row[key]); }).join(","));
+      });
+      return lines.join("\r\n");
+    }
+
+    document.getElementById("history-export").addEventListener("click", async function () {
+      const button = document.getElementById("history-export");
+      const status = document.getElementById("history-export-status");
+      button.disabled = true;
+      status.textContent = "Preparing export...";
+      try {
+        const rows = await fetchAllSessionsForExport(function (loaded, total) {
+          status.textContent = "Preparing export... (" + loaded + " of " + total + ")";
+        });
+        if (rows.length === 0) {
+          status.textContent = "No finished sessions to export yet.";
+          return;
+        }
+        const csv = sessionsToCsv(rows);
+        const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        const stamp = new Date().toISOString().slice(0, 10);
+        link.href = url;
+        link.download = "wellbeing-session-history-" + stamp + ".csv";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+        status.textContent = "Downloaded " + rows.length + " session" + (rows.length === 1 ? "" : "s") + ".";
+      } catch (err) {
+        status.textContent = "Export failed: " + err.message;
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    refreshUser();
+    loadSystemCheck();
+  </script>
+</body>
+</html>

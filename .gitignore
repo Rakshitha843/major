@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+data/*.db
+models/*.task
+models/*.joblib
+data/*.csv
+models/*.report.txt
+eye_log*.csv
